@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +11,7 @@ import '../widgets/vertical_spacer.dart';
 
 class EnterRecipientDetailsScreen extends StatefulWidget {
   String userSeed = "";
+  bool isLoading = false; // Flag to track loading state
 
   @override
   State<EnterRecipientDetailsScreen> createState() =>
@@ -174,30 +177,36 @@ class _EnterRecipientDetailsScreenState
     );
   }
 
-  Future<String> _generateAndSavePin() async {
-    String seed = await _getSeedFromDatabase();
-    print(seed);
-    String pin = generatePin(seed);
-
-    // Save the PIN to Firebase Realtime Database
-    String userId = FirebaseAuth.instance.currentUser!.uid;
-    DatabaseReference pinRef = FirebaseDatabase.instance
-        .ref()
-        .child('users')
-        .child(userId)
-        .child('pin');
-    await pinRef.set(pin);
-
-    return pin;
-  }
-
-  Future<String> _getSeedFromDatabase() async {
-    String userId = FirebaseAuth.instance.currentUser!.uid;
-    DocumentSnapshot snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(FirebaseAuth.instance.currentUser!.uid)
-        .get();
-    return snapshot['seed'];
+  void sendFun() {
+    setState(() {
+      widget.isLoading = true; // Start loading state
+    });
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        _userRef.orderByChild('user_id').equalTo(user.uid).once().then((event) {
+          final DataSnapshot snapshot = event.snapshot;
+          if (snapshot.value != null) {
+            userData = snapshot.value!;
+            final Map<dynamic, dynamic> userMap =
+                userData as Map<dynamic, dynamic>;
+            String userSeed = userMap.values.first['user_seed'];
+            String bank_pin = generatePin(userSeed);
+            updateSeedByUserId(user.uid, bank_pin, 'bank_seed');
+            setState(() {
+              widget.isLoading = false; // Start loading state
+            });
+            _showBottomSheet(context);
+          }
+        }).catchError((error) {
+          print('Error retrieving user: $error');
+        });
+      } else {
+        print("error$user");
+      }
+    } catch (e) {
+      print("error$e");
+    }
   }
 
   @override
@@ -211,44 +220,33 @@ class _EnterRecipientDetailsScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Recipient Account Number:'),
+            const Text('Recipient Account Number:'),
             TextField(
               controller: accountNumberController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: 'Enter account number',
               ),
             ),
-            SizedBox(height: 16.0),
-            Text('Amount to Send:'),
+            const SizedBox(height: 16.0),
+            const Text('Amount to Send:'),
             TextField(
               controller: amountController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: 'Enter amount',
               ),
             ),
-            SizedBox(height: 16.0),
-            Text('IFSC code:'),
+            const SizedBox(height: 16.0),
+            const Text('IFSC code:'),
             TextField(
               controller: bankDetailsController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: 'Enter IFSC details',
               ),
             ),
-            SizedBox(height: 32.0),
+            const SizedBox(height: 32.0),
             ElevatedButton(
-              onPressed: () {
-                try {
-                  String bank_pin = generatePin(widget.userSeed);
-                  User? user = FirebaseAuth.instance.currentUser;
-                  if (user != null) {
-                    updateSeedByUserId(user.uid, bank_pin, 'bank_seed');
-                    _showBottomSheet(context);
-                  }
-                } catch (e) {
-                  print("error===$e");
-                }
-              },
-              child: Text('Send'),
+              onPressed: sendFun,
+              child: Text(widget.isLoading ? "Loading..." : 'Send'),
             ),
           ],
         ),
@@ -348,151 +346,3 @@ String generatePin(String seed) {
   }
   return pin.substring(pin.length - 9); // Extract the last 6 digits as the PIN
 }
-
-
-
-
-
-/*import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:flutter_svg/svg.dart';
-import 'package:pay_now/screens/home.dart';
-import '../widgets/vertical_spacer.dart';
-
-class EnterRecipientDetailsScreen extends StatefulWidget {
-  @override
-  State<EnterRecipientDetailsScreen> createState() =>
-      _EnterRecipientDetailsScreenState();
-}
-
-class _EnterRecipientDetailsScreenState
-    extends State<EnterRecipientDetailsScreen> {
-  void _showBottomSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          height: 200,
-          color: Colors.white,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Generate PIN',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16.0),
-              ElevatedButton(
-                onPressed: () {            
-                  _showConfimrationDialog(context);
-                  // Handle PIN generation logic here
-                },
-                child: const Text('Generate PIN'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title:const Text('Enter Recipient Details'),
-      ),
-      body: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Recipient Account Number:'),
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Enter account number',
-              ),
-            ),
-            SizedBox(height: 16.0),
-            Text('Amount to Send:'),
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Enter amount',
-              ),
-            ),
-            SizedBox(height: 16.0),
-            Text('Bank Details:'),
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Enter bank details',
-              ),
-            ),
-            SizedBox(height: 32.0),
-            ElevatedButton(
-              onPressed: () {
-                _showBottomSheet(context);
-              },
-              child: Text('Send'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  _showConfimrationDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        insetPadding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20.w),
-        ),
-        child: SizedBox(
-          height: 430.h,
-          width: 327.w,
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 10.w,
-            ),
-            child: Column(
-              children: [
-                const VerticalSpacer(height: 40),
-                SizedBox(
-                  width: 240.w,
-                  height: 180.h,
-                  child: FittedBox(
-                    child:
-                        SvgPicture.asset('assets/images/sent_illustration.svg'),
-                    fit: BoxFit.fill,
-                  ),
-                ),
-                const VerticalSpacer(height: 35),
-                Text(
-                  "The amount has been sent successfully!",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w500,
-                    fontSize: 20.sp,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const VerticalSpacer(height: 40),
-                ElevatedButton(child:Text("Ok, Thanks"),onPressed :(){
-                  Navigator.of(context).push(MaterialPageRoute(builder: (context) {
-                    return HomeScreen();
-                  }));
-                })
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-
-
-
-
-}*/
